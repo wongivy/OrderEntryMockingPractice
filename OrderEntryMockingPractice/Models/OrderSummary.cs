@@ -10,9 +10,9 @@ namespace OrderEntryMockingPractice.Models
         public int CustomerId { get; set; }
 
         public List<OrderItem> OrderItems { get; set; }
-        public double NetTotal { get; set; }
+        public decimal NetTotal { get; set; }
         public IEnumerable<TaxEntry> Taxes { get; set; }
-        public double Total { get; set; }
+        public decimal Total { get; set; }
         public DateTime EstimatedDeliveryDate { get; set; }
     }
 }
