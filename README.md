@@ -1,3 +1,5 @@
+#Purpose
+The purpose of this project is to provide a practice area for learning to use a mocking framework in C#.
 #Instructions
 Fork this repository into your own account.
 Using your favorite unit test library and mocking framework, write tests for the following requirements.
