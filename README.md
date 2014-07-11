@@ -8,7 +8,7 @@ Any implementation code you write should exist primarily in the methods being te
 # TestCases
 ## OrderService.PlaceOrder
 ### Order is valid if
-* OrderItems are unique by product
+* OrderItems are unique by product sku
 * All products are in stock
 * If order is not valid, an exception is thrown containing a list of reasons why the order is not valid.
 * If order is valid, an OrderSummary is returned
