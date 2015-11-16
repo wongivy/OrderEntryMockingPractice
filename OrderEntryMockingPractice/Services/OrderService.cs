@@ -10,12 +10,14 @@ namespace OrderEntryMockingPractice.Services
     {
         private IProductRepository _productRepository;
         private IOrderFulfillmentService _orderFulfillmentService;
+        private IEmailService _emailService;
         private string reasonsForInvalidOrder;
 
-        public OrderService(IProductRepository ProductRepository, IOrderFulfillmentService orderFulfillmentService)
+        public OrderService(IProductRepository productRepository, IOrderFulfillmentService orderFulfillmentService, IEmailService emailService)
         {
-            _productRepository = ProductRepository;
+            _productRepository = productRepository;
             _orderFulfillmentService = orderFulfillmentService;
+            _emailService = emailService;
             reasonsForInvalidOrder = "";
         }
 
@@ -35,8 +37,34 @@ namespace OrderEntryMockingPractice.Services
             var OrderIsValid = reasonsForInvalidOrder.Length == 0;
             if (OrderIsValid)
             {
-                _orderFulfillmentService.Fulfill(order);
-                return new OrderSummary();
+                OrderConfirmation orderConfirmation =_orderFulfillmentService.Fulfill(order);
+
+                decimal netTotal = 0;
+                TaxEntry taxUSA = new TaxEntry
+                {
+                    Description = "USA",
+                    Rate = (decimal) 0.098
+                };
+
+                foreach (var orderItem in order.OrderItems)
+                {
+                    netTotal += orderItem.Product.Price*orderItem.Quantity;
+                }
+
+                OrderSummary orderSummary= new OrderSummary
+                {
+                    OrderNumber = orderConfirmation.OrderNumber,
+                    OrderId = orderConfirmation.OrderId,
+                    NetTotal = netTotal,
+                    Total = taxUSA.Rate * netTotal,
+                    Taxes = new List<TaxEntry>
+                    {
+                        taxUSA
+                    }
+                };
+
+                _emailService.SendOrderConfirmationEmail(orderSummary.CustomerId, orderSummary.OrderId);
+                return orderSummary;
             }
             else
                 throw new Exception(reasonsForInvalidOrder);
