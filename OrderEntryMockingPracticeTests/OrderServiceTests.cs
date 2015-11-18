@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography.X509Certificates;
 using NUnit.Framework;
 using OrderEntryMockingPractice.Models;
 using OrderEntryMockingPractice.Services;
@@ -11,185 +10,134 @@ namespace OrderEntryMockingPracticeTests
 {
     public class OrderServiceTests
     {
+        private ICustomerRepository _customerRepository;
+        private IEmailService _emailService;
+        private IOrderFulfillmentService _orderFulfillmentService;
+        private IProductRepository _productRepository;
+        private ITaxRateService _taxRateService;
+
+        [SetUp]
+        public void PlaceOrder_SetUp()
+        {
+            _customerRepository = MockRepository.GenerateMock<ICustomerRepository>();
+            _emailService = MockRepository.GenerateMock<IEmailService>();
+            _orderFulfillmentService = MockRepository.GenerateMock<IOrderFulfillmentService>();
+            _productRepository = MockRepository.GenerateMock<IProductRepository>();
+        }
+
         [Test]
-        public void PlaceOrder__NotUniqueByProductSKU__ThrowException()
+        public void PlaceOrder__NotUniqueByProductSKU__DoesThrowException()
         {
             // Arrange
-            IEmailService emailService = MockRepository.GenerateMock<IEmailService>();
-
-            IOrderFulfillmentService orderFulfillmentService = MockRepository.GenerateMock<IOrderFulfillmentService>();
-
-            IProductRepository productRepository = MockRepository.GenerateMock<IProductRepository>();
-            OrderService orderService = new OrderService(productRepository, orderFulfillmentService, emailService);
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
 
             var order = new Order
             {
                 OrderItems = new List<OrderItem>
-            {
-                new OrderItem
                 {
-                    Product = new Product { Sku = "apple"}
-                },
-                new OrderItem
-                {
-                    Product = new Product
-                    {
-                        Sku = "apple"
-                    }}
+                    new OrderItem { Product = new Product {Sku = "apple"} },
+                    new OrderItem { Product = new Product {Sku = "apple"} },
                 }
             };
-
+            
             // Act // Assert   
-            Assert.Throws<Exception>(() => orderService.PlaceOrder(order)).Message.Contains("The product is not in stock");
+            var exception = Assert.Throws<Exception>(() => orderService.PlaceOrder(order));
+            Assert.That(exception.Message, Is.StringContaining("The orderItems are not unique by Sku."));
         }
 
         [Test]
         public void PlaceOrder__UniqueByProductSKU__DoesNotThrowException()
         {
             // Arrange
-            IEmailService emailService = MockRepository.GenerateMock<IEmailService>();
+            _customerRepository.Stub(c => c.Get(Arg<int>.Is.Anything)).Return(new Customer());
+            _productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
 
-            IOrderFulfillmentService orderFulfillmentService = MockRepository.GenerateMock<IOrderFulfillmentService>();
-            orderFulfillmentService.Stub(or => orderFulfillmentService.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation
-            {
-                OrderNumber = "1"
-            });
+            _orderFulfillmentService.Expect(service => service.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation());
 
-            IProductRepository productRepository = MockRepository.GenerateMock<IProductRepository>();
-            OrderService orderService = new OrderService(productRepository, orderFulfillmentService, emailService);
-            productRepository.Stub(pr => pr.IsInStock("apple")).Return(true);
-            productRepository.Stub(pr => pr.IsInStock("apple2")).Return(true);
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
 
             var order = new Order
             {
+                CustomerId = 1,
                 OrderItems = new List<OrderItem>
-            {
-                new OrderItem
                 {
-                    Product = new Product { Sku = "apple"}
-                },
-                new OrderItem
-                {
-                    Product = new Product
-                    {
-                        Sku = "apple2"
-                    }}
+                    new OrderItem { Product = new Product { Sku = "apple" } },
+                    new OrderItem { Product = new Product { Sku = "apple2" } }
                 }
             };
 
-            // Act // Assert   
-            Assert.DoesNotThrow(() => orderService.PlaceOrder(order));
+            // Act 
+            var result = orderService.PlaceOrder(order);
+
+            // Assert   
+            _productRepository.VerifyAllExpectations();
         }
 
         [Test]
         public void PlaceOrder_AllProductsInStock_DoesNotThrowException()
         {
             // Arrange
-            IEmailService emailService = MockRepository.GenerateMock<IEmailService>();
+            _customerRepository.Stub(c => c.Get(Arg<int>.Is.Anything)).Return(new Customer());
+            _orderFulfillmentService.Stub(or => _orderFulfillmentService.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation());
 
-            IOrderFulfillmentService orderFulfillmentService = MockRepository.GenerateMock<IOrderFulfillmentService>();
-            orderFulfillmentService.Stub(or => orderFulfillmentService.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation
-            {
-                OrderNumber = "1"
-            });
+            _productRepository.Expect(pr => pr.IsInStock("apple")).Return(true);
+            _productRepository.Expect(pr => pr.IsInStock("apple2")).Return(true);
 
-            IProductRepository productRepository = MockRepository.GenerateMock<IProductRepository>();
-            productRepository.Stub(pr => pr.IsInStock("apple")).Return(true);
-            productRepository.Stub(pr => pr.IsInStock("apple2")).Return(true);
-
-            OrderService orderService = new OrderService(productRepository, orderFulfillmentService, emailService);
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
 
             var order = new Order
             {
+                CustomerId = 1,
                 OrderItems = new List<OrderItem>
-            {
-                new OrderItem
                 {
-                    Product = new Product
-                    {
-                        Sku = "apple"
-                    }
-                },
-                new OrderItem
-                {
-                    Product = new Product
-                    {
-                        Sku = "apple2"
-                    }}
+                    new OrderItem { Product = new Product { Sku = "apple" } },
+                    new OrderItem { Product = new Product { Sku = "apple2" } }
                 }
             };
 
-            // Act // Assert   
-            Assert.DoesNotThrow(() => orderService.PlaceOrder(order));
+            // Act 
+            var result = orderService.PlaceOrder(order);
+
+            // Assert   
+            _productRepository.VerifyAllExpectations();
         }
 
         [Test]
         public void PlaceOrder_AllProductsNotInStock_DoesThrowException()
         {
             // Arrange
-            IEmailService emailService = MockRepository.GenerateMock<IEmailService>();
+            _productRepository.Expect(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(false);
 
-            IOrderFulfillmentService orderFulfillmentService = MockRepository.GenerateMock<IOrderFulfillmentService>();
-
-            IProductRepository productRepository = MockRepository.GenerateMock<IProductRepository>();
-            productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(false);
-
-            OrderService orderService = new OrderService(productRepository, orderFulfillmentService, emailService);
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
 
             var order = new Order
             {
                 OrderItems = new List<OrderItem>
-            {
-                new OrderItem
                 {
-                    Product = new Product
-                    {
-                        Sku = "apple"
-                    }
-                },
-                new OrderItem
-                {
-                    Product = new Product
-                    {
-                        Sku = "apple2"
-                    }}
+                    new OrderItem { Product = new Product { Sku = "apple" } },
+                    new OrderItem { Product = new Product { Sku = "apple2" } }
                 }
             };
 
             // Act // Assert   
-            Assert.Throws<Exception>(() => orderService.PlaceOrder(order)).Message.Contains("The OrderItems are not unqiue by Sku.");
+            var exception = Assert.Throws<Exception>(() => orderService.PlaceOrder(order));
+            Assert.That(exception.Message, Is.StringContaining("Not all products are in stock."));
         }
 
         [Test]
         public void PlaceOrder_OrderIsNotValid_ThrowsExceptionWithListOfWhyNotValid()
         {
             // Arrange
-            IEmailService emailService = MockRepository.GenerateMock<IEmailService>();
+            _productRepository.Expect(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(false);
 
-            IOrderFulfillmentService orderFulfillmentService = MockRepository.GenerateMock<IOrderFulfillmentService>();
-
-            IProductRepository productRepository = MockRepository.GenerateMock<IProductRepository>();
-            productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(false);
-
-            OrderService orderService = new OrderService(productRepository, orderFulfillmentService, emailService);
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
 
             var order = new Order
             {
                 OrderItems = new List<OrderItem>
-            {
-                new OrderItem
                 {
-                    Product = new Product
-                    {
-                        Sku = "apple"
-                    }
-                },
-                new OrderItem
-                {
-                    Product = new Product
-                    {
-                        Sku = "apple2"
-                    }}
+                    new OrderItem { Product = new Product { Sku = "apple" } },
+                    new OrderItem { Product = new Product { Sku = "apple2" } }
                 }
             };
 
@@ -201,36 +149,19 @@ namespace OrderEntryMockingPracticeTests
         public void PlaceOrder_OrderIsValid_ReturnOrderSummary()
         {
             // Arrange
-            IEmailService emailService = MockRepository.GenerateMock<IEmailService>();
+            _customerRepository.Stub(c => c.Get(Arg<int>.Is.Anything)).Return(new Customer());
+            _productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
+            _orderFulfillmentService.Stub(or => _orderFulfillmentService.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation());
 
-            IOrderFulfillmentService orderFulfillmentService = MockRepository.GenerateMock<IOrderFulfillmentService>();
-            orderFulfillmentService.Stub(or => orderFulfillmentService.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation
-            {
-                OrderNumber = "1"
-            });
-
-            IProductRepository productRepository = MockRepository.GenerateMock<IProductRepository>();
-            productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
-
-            OrderService orderService = new OrderService(productRepository, orderFulfillmentService, emailService);
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
 
             var order = new Order
             {
+                CustomerId = 1,
                 OrderItems = new List<OrderItem>
-            {
-                new OrderItem
                 {
-                    Product = new Product
-                    {
-                        Sku = "apple"
-                    }
-                },
-                new OrderItem
-                {
-                    Product = new Product
-                    {
-                        Sku = "apple2"
-                    }}
+                    new OrderItem { Product = new Product { Sku = "apple" } },
+                    new OrderItem { Product = new Product { Sku = "apple2" } }
                 }
             };
 
@@ -243,169 +174,108 @@ namespace OrderEntryMockingPracticeTests
         public void PlaceOrder_OrderIsValid_OrderSubmittedToOrderFulfillmentService()
         {
             // Arrange
-            IEmailService emailService = MockRepository.GenerateMock<IEmailService>();
-
-            IOrderFulfillmentService orderFulfillmentService = MockRepository.GenerateMock<IOrderFulfillmentService>();
-            orderFulfillmentService.Stub(or => orderFulfillmentService.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation
-            {
-                OrderNumber = "1"
-            });
-
-            IProductRepository productRepository = MockRepository.GenerateMock<IProductRepository>();
-            productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
-            OrderService orderService = new OrderService(productRepository, orderFulfillmentService, emailService);
+            _customerRepository.Stub(c => c.Get(Arg<int>.Is.Anything)).Return(new Customer());
+            _productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
 
             var order = new Order
             {
+                CustomerId = 1,
                 OrderItems = new List<OrderItem>
-            {
-                new OrderItem
                 {
-                    Product = new Product
-                    {
-                        Sku = "apple"
-                    }
-                },
-                new OrderItem
-                {
-                    Product = new Product
-                    {
-                        Sku = "apple2"
-                    }}
+                    new OrderItem { Product = new Product { Sku = "apple" } },
+                    new OrderItem { Product = new Product { Sku = "apple2" } }
                 }
             };
 
+            _orderFulfillmentService.Expect(or => or.Fulfill(order)).Return(new OrderConfirmation());
+
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
+
             // Act  
-            orderService.PlaceOrder(order);
+            var result = orderService.PlaceOrder(order);
 
             // Assert  
-            orderFulfillmentService.AssertWasCalled(x => x.Fulfill(order));
+            _orderFulfillmentService.VerifyAllExpectations();
         }
 
         [Test]
         public void PlaceOrder_OrderIsValid_OrderSummaryContainsFulfillmentConfirmationNumber()
         {
             // Arrange
-            IEmailService emailService = MockRepository.GenerateMock<IEmailService>();
-
-            IOrderFulfillmentService orderFulfillmentService = MockRepository.GenerateMock<IOrderFulfillmentService>();
-            orderFulfillmentService.Stub(or => orderFulfillmentService.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation
-            {
-                OrderNumber = "1"
-            });
-
-            IProductRepository productRepository = MockRepository.GenerateMock<IProductRepository>();
-            productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
-            OrderService orderService = new OrderService(productRepository, orderFulfillmentService, emailService);
+            var expectedConfirmationNumber = "1";
+            _customerRepository.Stub(c => c.Get(Arg<int>.Is.Anything)).Return(new Customer());
+            _productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
 
             var order = new Order
             {
+                CustomerId = 1,
                 OrderItems = new List<OrderItem>
-            {
-                new OrderItem
                 {
-                    Product = new Product
-                    {
-                        Sku = "apple"
-                    }
-                },
-                new OrderItem
-                {
-                    Product = new Product
-                    {
-                        Sku = "apple2"
-                    }}
+                    new OrderItem { Product = new Product { Sku = "apple" } },
+                    new OrderItem { Product = new Product { Sku = "apple2" } },
                 }
             };
+
+            _orderFulfillmentService.Stub(or => or.Fulfill(order)).Return(new OrderConfirmation { OrderNumber = "1" });
+
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
 
             // Act  
             var result = orderService.PlaceOrder(order);
 
             // Assert  
-            Assert.That(result.OrderNumber == "1");
+            Assert.That(result.OrderNumber, Is.EqualTo(expectedConfirmationNumber));
         }
 
         [Test]
         public void PlaceOrder_OrderIsValid_OrderSummaryContainsOrderId()
         {
             // Arrange
-            IEmailService emailService = MockRepository.GenerateMock<IEmailService>();
-
-            IOrderFulfillmentService orderFulfillmentService = MockRepository.GenerateMock<IOrderFulfillmentService>();
-            orderFulfillmentService.Stub(or => orderFulfillmentService.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation
-            {
-                OrderNumber = "1",
-                OrderId = 1
-            });
-
-            IProductRepository productRepository = MockRepository.GenerateMock<IProductRepository>();
-            productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
-            OrderService orderService = new OrderService(productRepository, orderFulfillmentService, emailService);
+            var expectedOrderId = 1;
+            _customerRepository.Stub(c => c.Get(Arg<int>.Is.Anything)).Return(new Customer());
+            _productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
 
             var order = new Order
             {
+                CustomerId = 1,
                 OrderItems = new List<OrderItem>
-            {
-                new OrderItem
                 {
-                    Product = new Product
-                    {
-                        Sku = "apple"
-                    }
-                },
-                new OrderItem
-                {
-                    Product = new Product
-                    {
-                        Sku = "apple2"
-                    }}
+                    new OrderItem { Product = new Product { Sku = "apple" } },
+                    new OrderItem { Product = new Product { Sku = "apple2" } },
                 }
             };
+
+            _orderFulfillmentService.Stub(or => or.Fulfill(order)).Return(new OrderConfirmation{OrderNumber = "1", OrderId = 1, });
+
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
+
 
             // Act  
             var result = orderService.PlaceOrder(order);
 
             // Assert  
-            Assert.That(result.OrderId == 1);
+            Assert.That(result.OrderId, Is.EqualTo(expectedOrderId), "OrderId");
         }
-
 
         [Test]
         public void PlaceOrder_OrderIsValid_OrderSummaryContainsApplicableTaxes()
         {
             // Arrange
-            IEmailService emailService = MockRepository.GenerateMock<IEmailService>();
+            _customerRepository.Stub(c => c.Get(Arg<int>.Is.Anything)).Return(new Customer());
+            _productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
+            _orderFulfillmentService.Stub(or => _orderFulfillmentService.Fulfill(Arg<Order>.Is.Anything))
+                .Return(new OrderConfirmation());
 
-            IOrderFulfillmentService orderFulfillmentService = MockRepository.GenerateMock<IOrderFulfillmentService>();
-            orderFulfillmentService.Stub(or => orderFulfillmentService.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation
-            {
-                OrderNumber = "1",
-                OrderId = 1
-            });
-
-            IProductRepository productRepository = MockRepository.GenerateMock<IProductRepository>();
-            productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
-            OrderService orderService = new OrderService(productRepository, orderFulfillmentService, emailService);
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
 
             var order = new Order
             {
+                CustomerId = 1,
                 OrderItems = new List<OrderItem>
-            {
-                new OrderItem
                 {
-                    Product = new Product
-                    {
-                        Sku = "apple"
-                    }
-                },
-                new OrderItem
-                {
-                    Product = new Product
-                    {
-                        Sku = "apple2"
-                    }
+                    new OrderItem { Product = new Product { Sku = "apple" } },
+                    new OrderItem { Product = new Product { Sku = "apple2" } }
                 }
-            }
             };
 
             // Act  
@@ -419,41 +289,27 @@ namespace OrderEntryMockingPracticeTests
         public void PlaceOrder_OrderIsValid_OrderSummaryContainsNetTotal()
         {
             // Arrange
-            IEmailService emailService = MockRepository.GenerateMock<IEmailService>();
+            _customerRepository.Stub(c => c.Get(Arg<int>.Is.Anything)).Return(new Customer());
+            _orderFulfillmentService.Stub(or => or.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation());
+            _productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
 
-            IOrderFulfillmentService orderFulfillmentService = MockRepository.GenerateMock<IOrderFulfillmentService>();
-            orderFulfillmentService.Stub(or => orderFulfillmentService.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation
-            {
-                OrderNumber = "1",
-                OrderId = 1
-            });
-
-            IProductRepository productRepository = MockRepository.GenerateMock<IProductRepository>();
-            productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
-            OrderService orderService = new OrderService(productRepository, orderFulfillmentService, emailService);
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
 
             var order = new Order
             {
+                CustomerId = 1,
                 OrderItems = new List<OrderItem>
-            {
-                new OrderItem
                 {
-                    Product = new Product
+                    new OrderItem
                     {
-                        Sku = "apple",
-                        Price = (decimal) 2.00
+                        Product = new Product { Sku = "apple", Price = (decimal) 2.00},
+                        Quantity = 2
                     },
-                    Quantity = 2
-                },
-                new OrderItem
-                {
-                    Product = new Product
+                    new OrderItem
                     {
-                        Sku = "apple2",
-                        Price = (decimal) 2.50
-                    },
-                    Quantity = 1
-                }
+                        Product = new Product { Sku = "apple2", Price = (decimal) 2.50 },
+                        Quantity = 1
+                    }
                 }
             };
 
@@ -468,53 +324,109 @@ namespace OrderEntryMockingPracticeTests
         public void PlaceOrder_OrderIsValid_SendConfirmationEmail()
         {
             // Arrange
-            IEmailService emailService = MockRepository.GenerateMock<IEmailService>();
-            emailService.Stub(x => x.SendOrderConfirmationEmail(Arg<int>.Is.Equal(123), Arg<int>.Is.Equal(1)));
-
-            IOrderFulfillmentService orderFulfillmentService = MockRepository.GenerateMock<IOrderFulfillmentService>();
-            orderFulfillmentService.Stub(or => orderFulfillmentService.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation
+            var expectedCustomerId = 1;
+            var expectedOrderId = 1;
+            var order = new Order
             {
-                OrderNumber = "1",
-                OrderId = 1,
-                CustomerId = 123
-            });
+                CustomerId = 1,
+                OrderItems = new List<OrderItem>
+                {
+                    new OrderItem
+                    {
+                        Product = new Product { Sku = "apple", Price = (decimal) 2.00},
+                        Quantity = 2
+                    },
+                    new OrderItem
+                    {
+                        Product = new Product { Sku = "apple2", Price = (decimal) 2.50 },
+                        Quantity = 1
+                    }
+                }
+            };
 
-            IProductRepository productRepository = MockRepository.GenerateMock<IProductRepository>();
-            productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
-            OrderService orderService = new OrderService(productRepository, orderFulfillmentService, emailService);
+            _customerRepository.Stub(c => c.Get(Arg<int>.Is.Anything)).Return(new Customer());
+            _productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
+            _orderFulfillmentService.Stub(or => or.Fulfill(order)).Return(new OrderConfirmation {OrderId = 1,CustomerId = 1});
+
+            _emailService.Expect(x => x.SendOrderConfirmationEmail(expectedCustomerId, expectedOrderId));
+
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
+
+            // Act  
+            var result = orderService.PlaceOrder(order);
+
+            // Assert  
+            _emailService.VerifyAllExpectations();
+        }
+
+        [Test]
+        public void PlaceOrder_CustomerNotInCustomerRepository_DoesThrowException()
+        {
+            // Arrange
+            _customerRepository.Stub(c => c.Get(Arg<int>.Is.Anything)).Return(null);
+            _productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
+
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
 
             var order = new Order
             {
+                CustomerId = 1,
                 OrderItems = new List<OrderItem>
-            {
-                new OrderItem
                 {
-                    Product = new Product
+                    new OrderItem
                     {
-                        Sku = "apple",
-                        Price = (decimal) 2.00
+                        Product = new Product { Sku = "apple", Price = (decimal) 2.00},
+                        Quantity = 2
                     },
-                    Quantity = 2
-                },
-                new OrderItem
-                {
-                    Product = new Product
+                    new OrderItem
                     {
-                        Sku = "apple2",
-                        Price = (decimal) 2.50
-                    },
-                    Quantity = 1
+                        Product = new Product { Sku = "apple2", Price = (decimal) 2.50 },
+                        Quantity = 1
+                    }
                 }
+            };
+            // Act  // Assert  
+            var exception = Assert.Throws<Exception>(() => orderService.PlaceOrder(order));
+            Assert.That(exception.Message, Is.StringContaining("The customer is null or cannot be retrieved."));
+        }
+
+        [Test]
+        public void PlaceOrder_CustomerIsInCustomerRepository_DoesNotThrowException()
+        {
+            // Arrange
+            var expectedCustomerId = 1;
+
+            _productRepository.Stub(pr => pr.IsInStock(Arg<string>.Is.Anything)).Return(true);
+            _orderFulfillmentService.Stub(or => or.Fulfill(Arg<Order>.Is.Anything)).Return(new OrderConfirmation());
+
+            _customerRepository.Expect(c => c.Get(expectedCustomerId)).Return(new Customer {CustomerId = expectedCustomerId});
+
+            var orderService = new OrderService(_productRepository, _orderFulfillmentService, _emailService, _customerRepository, _taxRateService);
+
+            var order = new Order
+            {
+                CustomerId = 1,
+                OrderItems = new List<OrderItem>
+                {
+                    new OrderItem
+                    {
+                        Product = new Product { Sku = "apple", Price = (decimal) 2.00},
+                        Quantity = 2
+                    },
+                    new OrderItem
+                    {
+                        Product = new Product { Sku = "apple2", Price = (decimal) 2.50 },
+                        Quantity = 1
+                    }
                 }
             };
 
             // Act  
             var result = orderService.PlaceOrder(order);
-            
-            // Assert  
-            emailService.AssertWasCalled(x => x.SendOrderConfirmationEmail(result.CustomerId, result.OrderId));
-        }
 
+            // Assert  
+            _customerRepository.VerifyAllExpectations();
+        }
 
     }
 }

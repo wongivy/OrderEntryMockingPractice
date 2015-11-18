@@ -8,53 +8,41 @@ namespace OrderEntryMockingPractice.Services
 {
     public class OrderService
     {
+        private ICustomerRepository _customerRepository;
         private IProductRepository _productRepository;
         private IOrderFulfillmentService _orderFulfillmentService;
         private IEmailService _emailService;
-        private string reasonsForInvalidOrder;
+        private ITaxRateService _taxRateService;
+        private string _reasonsForInvalidOrder;
 
-        public OrderService(IProductRepository productRepository, IOrderFulfillmentService orderFulfillmentService, IEmailService emailService)
+        public OrderService(IProductRepository productRepository, IOrderFulfillmentService orderFulfillmentService, IEmailService emailService, ICustomerRepository customerRepository, ITaxRateService taxRateService)
         {
+            _customerRepository = customerRepository;
             _productRepository = productRepository;
             _orderFulfillmentService = orderFulfillmentService;
             _emailService = emailService;
-            reasonsForInvalidOrder = "";
+            _taxRateService = taxRateService;
+            _reasonsForInvalidOrder = "";
         }
 
         public OrderSummary PlaceOrder(Order order)
         {
-            var skus = order.OrderItems.Select(orderItem => orderItem.Product.Sku).ToList();
-            if (skus.Count() != skus.Distinct().Count())
-                reasonsForInvalidOrder += "The OrderItems are not unqiue by Sku. ";
-
-            foreach (var orderItem in order.OrderItems)
-            {
-                var productIsNotInstock = !_productRepository.IsInStock(orderItem.Product.Sku);
-                if(productIsNotInstock)
-                    reasonsForInvalidOrder += "The product is not in stock";
-            }
-
-            var OrderIsValid = reasonsForInvalidOrder.Length == 0;
-            if (OrderIsValid)
+            if (OrderIsValid(order))
             {
                 OrderConfirmation orderConfirmation =_orderFulfillmentService.Fulfill(order);
+                
+                decimal netTotal = CalculateNetTotal(order);
 
-                decimal netTotal = 0;
                 TaxEntry taxUSA = new TaxEntry
                 {
                     Description = "USA",
                     Rate = (decimal) 0.098
                 };
-
-                foreach (var orderItem in order.OrderItems)
-                {
-                    netTotal += orderItem.Product.Price*orderItem.Quantity;
-                }
-
                 OrderSummary orderSummary= new OrderSummary
                 {
                     OrderNumber = orderConfirmation.OrderNumber,
                     OrderId = orderConfirmation.OrderId,
+                    CustomerId = orderConfirmation.CustomerId,
                     NetTotal = netTotal,
                     Total = taxUSA.Rate * netTotal,
                     Taxes = new List<TaxEntry>
@@ -67,7 +55,58 @@ namespace OrderEntryMockingPractice.Services
                 return orderSummary;
             }
             else
-                throw new Exception(reasonsForInvalidOrder);
+                throw new Exception(_reasonsForInvalidOrder);
+        }
+
+        private decimal CalculateNetTotal(Order order)
+        {
+            decimal netTotal = 0;
+            foreach (var orderItem in order.OrderItems)
+            {
+                netTotal += orderItem.Product.Price*orderItem.Quantity;
+            }
+            return netTotal;
+        }
+
+        private bool OrderIsValid(Order order)
+        {
+            List<OrderItem> orderItems = order.OrderItems;
+            if (!orderItemsAreUnique(orderItems))
+                _reasonsForInvalidOrder += "The orderItems are not unique by Sku. \n";
+            if (!ItemsAreInStock(orderItems))
+                _reasonsForInvalidOrder += "Not all products are in stock. \n";
+            if (!IsCustomerValid(order.CustomerId))
+                _reasonsForInvalidOrder += "The customer is null or cannot be retrieved.";
+            return _reasonsForInvalidOrder.Length == 0;
+        }
+
+        private bool orderItemsAreUnique(List<OrderItem> orderItems)
+        {
+            var skus = orderItems.Select(orderItem => orderItem.Product.Sku).ToList();
+            return skus.Count() == skus.Distinct().Count();
+        }
+
+        private bool ItemsAreInStock(List<OrderItem> orderItems)
+        {
+            foreach (var orderItem in orderItems)
+            {
+                var productIsNotInstock = !_productRepository.IsInStock(orderItem.Product.Sku);
+                if (productIsNotInstock)
+                    return false;
+            }
+            return true;
+        }
+
+        private bool IsCustomerValid(int? customerId)
+        {
+            var customerIdIsValid = customerId != null;
+            if (customerIdIsValid)
+            {
+                var customerIsInCustomerRepository = _customerRepository.Get((int) customerId) != null;
+                if (customerIsInCustomerRepository)
+                    return true;
+            }
+            return false;
         }
     }
 }
