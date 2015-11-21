@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics.Eventing.Reader;
 using System.Linq;
 using OrderEntryMockingPractice.Models;
 
@@ -27,28 +26,25 @@ namespace OrderEntryMockingPractice.Services
 
         public OrderSummary PlaceOrder(Order order)
         {
-            if (OrderIsValid(order))
+            List<OrderItem> orderItems = order.OrderItems;
+            Customer customer = RetrieveCustomer(order.CustomerId);
+
+            if (OrderIsValid(order, orderItems))
             {
                 OrderConfirmation orderConfirmation =_orderFulfillmentService.Fulfill(order);
-                
-                decimal netTotal = CalculateNetTotal(order);
 
-                TaxEntry taxUSA = new TaxEntry
-                {
-                    Description = "USA",
-                    Rate = (decimal) 0.098
-                };
+                IEnumerable<TaxEntry> applicableTaxes = RetrieveTaxEntries(customer).ToList();
+                decimal netTotal = CalculateNetTotal(order);
+                decimal orderTotal = CalculateOrderTotal(netTotal, applicableTaxes);
+                
                 OrderSummary orderSummary= new OrderSummary
                 {
                     OrderNumber = orderConfirmation.OrderNumber,
                     OrderId = orderConfirmation.OrderId,
                     CustomerId = orderConfirmation.CustomerId,
+                    Taxes = applicableTaxes,
                     NetTotal = netTotal,
-                    Total = taxUSA.Rate * netTotal,
-                    Taxes = new List<TaxEntry>
-                    {
-                        taxUSA
-                    }
+                    Total = orderTotal,
                 };
 
                 _emailService.SendOrderConfirmationEmail(orderSummary.CustomerId, orderSummary.OrderId);
@@ -56,6 +52,25 @@ namespace OrderEntryMockingPractice.Services
             }
             else
                 throw new Exception(_reasonsForInvalidOrder);
+        }
+
+        private Customer RetrieveCustomer(int? customerId)
+        {
+            var customerIdIsValid = customerId == null;
+            if (customerIdIsValid)
+
+            return null;
+        }
+
+        private decimal CalculateOrderTotal(decimal netTotal, IEnumerable<TaxEntry> applicableTaxes)
+        {
+            decimal orderTotal = 0;
+            var taxes = applicableTaxes.ToList();
+            for (int index = 0; index < taxes.Count; index++)
+            {
+                orderTotal += taxes[index].Rate*netTotal;
+            }
+            return orderTotal;
         }
 
         private decimal CalculateNetTotal(Order order)
@@ -68,9 +83,8 @@ namespace OrderEntryMockingPractice.Services
             return netTotal;
         }
 
-        private bool OrderIsValid(Order order)
+        private bool OrderIsValid(Order order, List<OrderItem> orderItems)
         {
-            List<OrderItem> orderItems = order.OrderItems;
             if (!orderItemsAreUnique(orderItems))
                 _reasonsForInvalidOrder += "The orderItems are not unique by Sku. \n";
             if (!ItemsAreInStock(orderItems))
@@ -83,7 +97,7 @@ namespace OrderEntryMockingPractice.Services
         private bool orderItemsAreUnique(List<OrderItem> orderItems)
         {
             var skus = orderItems.Select(orderItem => orderItem.Product.Sku).ToList();
-            return skus.Count() == skus.Distinct().Count();
+            return skus.Count == skus.Distinct().Count();
         }
 
         private bool ItemsAreInStock(List<OrderItem> orderItems)
@@ -108,5 +122,13 @@ namespace OrderEntryMockingPractice.Services
             }
             return false;
         }
+
+        private IEnumerable<TaxEntry> RetrieveTaxEntries(Customer customer)
+        {
+            String customerPostalCode = customer.PostalCode;
+            String customerCountry = customer.Country;
+            List<TaxEntry> taxes = _taxRateService.GetTaxEntries(customerPostalCode, customerCountry).ToList();
+            return taxes;
+        } 
     }
 }
